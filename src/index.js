@@ -213,6 +213,18 @@ const TOOLS = [
     },
   },
   {
+    name: "whatsapp_stage_media",
+    description: "Copy a WhatsApp media item (e.g. a video the user sent) to a temporary public download link (Cloudflare R2, auto-deleted after ~24h). Use it to hand files to other tools or web pages (e.g. YouTube uploads) without pulling the bytes into chat.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        media_id: { type: "string", description: "Media id from whatsapp_get_messages." },
+        filename: { type: "string", description: "Optional file name for the link (e.g. clip1.mp4)." },
+      },
+      required: ["media_id"],
+    },
+  },
+  {
     name: "whatsapp_api_request",
     description: "Low-level escape hatch: call any WhatsApp agent API path directly (e.g. GET /updates?offset=0, POST /messages with a custom JSON body). Path is relative to https://api.whatsapp.com/agent/v1.",
     inputSchema: {
@@ -721,6 +733,17 @@ async function callTool(name, args, token, env) {
       }
       return jsonText(await a.saveState(patch));
     }
+    case "whatsapp_stage_media": {
+      if (!env.STAGE) throw new Error("Staging bucket not configured.");
+      const meta = await a.mediaInfo(args.media_id);
+      const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new ApiError(res.status, await res.text());
+      const ext = { "video/mp4": "mp4", "image/jpeg": "jpg", "image/png": "png", "audio/ogg": "ogg", "application/pdf": "pdf" }[(meta.mime_type || "").split(";")[0]] || "bin";
+      const name = (args.filename || `${args.media_id}.${ext}`).replace(/[^A-Za-z0-9._-]/g, "_");
+      const key = `${crypto.randomUUID().slice(0, 12)}/${name}`;
+      await env.STAGE.put(key, res.body, { httpMetadata: { contentType: (meta.mime_type || "application/octet-stream").split(";")[0] } });
+      return jsonText({ url: `${env.__ORIGIN}/stage/${key}`, bytes: meta.file_size, mime_type: meta.mime_type, expires: "~24 hours" });
+    }
     case "whatsapp_api_request": {
       const method = (args.method || "GET").toUpperCase();
       let path = String(args.path || "");
@@ -781,12 +804,37 @@ async function handleRpc(msg, token, env) {
   }
 }
 
+// Temporary public file staging (R2 bucket "agent-stage", objects expire after ~1 day).
+// GET/HEAD are public with CORS so web pages can fetch staged files; PUT needs the STAGE_SECRET header.
+async function handleStage(request, env, url) {
+  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, HEAD, PUT, OPTIONS", "Access-Control-Allow-Headers": "*", "Access-Control-Expose-Headers": "Content-Length, Content-Type" };
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (!env.STAGE) return new Response("staging not configured", { status: 500, headers: cors });
+  const key = decodeURIComponent(url.pathname.slice("/stage/".length));
+  if (!key || key.includes("..")) return new Response("bad key", { status: 400, headers: cors });
+  if (request.method === "PUT") {
+    if (!env.STAGE_SECRET || request.headers.get("x-stage-secret") !== env.STAGE_SECRET) return new Response("forbidden", { status: 403, headers: cors });
+    await env.STAGE.put(key, request.body, { httpMetadata: { contentType: request.headers.get("content-type") || "application/octet-stream" } });
+    return new Response(JSON.stringify({ url: `${url.origin}/stage/${key}` }), { status: 200, headers: { "Content-Type": "application/json", ...cors } });
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    const obj = await env.STAGE.get(key);
+    if (!obj) return new Response("not found", { status: 404, headers: cors });
+    const h = { ...cors, "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream", "Content-Length": String(obj.size), "Cache-Control": "no-store" };
+    return new Response(request.method === "HEAD" ? null : obj.body, { status: 200, headers: h });
+  }
+  return new Response("method not allowed", { status: 405, headers: cors });
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...CORS } });
 }
 
 export default {
   async fetch(request, env) {
+    const u0 = new URL(request.url);
+    env.__ORIGIN = u0.origin;
+    if (u0.pathname.startsWith("/stage/")) return handleStage(request, env, u0);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     if (request.method === "GET") {
       return new Response("whatsappagentmcp: MCP endpoint. POST JSON-RPC here with ?bearer_token=<agent API key>.", {

@@ -5,3 +5,7 @@ compatibility_date = "2025-01-01"
 [[kv_namespaces]]
 binding = "STATE"
 id = "87f0884b88bc42eeb2a796a200fc718c"
+
+[[r2_buckets]]
+binding = "STAGE"
+bucket_name = "agent-stage"
