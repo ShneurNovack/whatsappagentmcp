@@ -1,0 +1,14 @@
+{
+  "name": "whatsappagentmcp",
+  "version": "1.0.0",
+  "description": "MCP server for the WhatsApp Agent Platform API (api.whatsapp.com/agent/v1), deployed on Cloudflare Workers.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
