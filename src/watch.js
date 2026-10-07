@@ -11,8 +11,10 @@
 // Config (Cloudflare dashboard > Worker > Settings > Variables and Secrets):
 //   WA_AGENT_TOKEN   secret  the WhatsApp agent API key (same one in the connector URL)
 //   RORY_FIRE_TOKEN  secret  the API trigger token for the Rory routine (sk-ant-oat01-...)
-//   RORY_ROUTINE_ID  var     trig_... id of the routine to fire (set in wrangler.toml)
-// Until both secrets exist the watcher does nothing.
+//   RORY_ROUTINE_ID  secret  trig_... id of the Claude Code relay routine to fire. That routine
+//                            calls fire_trigger on the Rory scheduled task so the ping lands in
+//                            the Rory chat (Claude Code routines and Claude scheduled tasks are separate).
+// Until all three exist the watcher does nothing.
 
 const WA_API = "https://api.whatsapp.com/agent/v1";
 const FIRE_API = "https://api.anthropic.com/v1/claude_code/routines/";

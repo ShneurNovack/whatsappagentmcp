@@ -1,9 +1,7 @@
 name = "whatsappagentmcp"
 main = "src/main.js"
 compatibility_date = "2025-01-01"
-
-[vars]
-RORY_ROUTINE_ID = "trig_01MtnfE9MNdjuQVHURZ7YinG"
+keep_vars = true
 
 [triggers]
 crons = ["* * * * *"]
