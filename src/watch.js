@@ -63,7 +63,7 @@ export async function watch(env) {
   // Claude Code relay routine "Rory WhatsApp relay" (it calls fire_trigger on the Rory scheduled task).
   const routine = env.RORY_RELAY_ROUTINE_ID || "trig_01RjGX1D2qZaNh7nBNGM9Gfn";
   if (!env.STATE) return { skipped: "no KV" };
-  const diag = (reason) => env.STATE.put("watcher:diag", JSON.stringify({ at: Math.floor(Date.now() / 1000), reason, has_token: !!token, has_fire: !!fireToken }));
+  const diag = async (reason) => (await env.STATE.get("watcher:diag_reason")) === reason ? null : (env.STATE.put("watcher:diag_reason", reason), env.STATE.put("watcher:diag", JSON.stringify({ at: Math.floor(Date.now() / 1000), reason, has_token: !!token, has_fire: !!fireToken })));
   if (!token || !fireToken || !routine) {
     await diag("not configured");
     return { skipped: "not configured" };
@@ -81,7 +81,8 @@ export async function watch(env) {
 
   const { msgs, head } = await pollFrom(token, agent.offset);
   if (!msgs.length) {
-    await saveW({ unread: 0 });
+    // KV free tier allows ~1k writes/day: only write when the state actually changes.
+    if (w.unread) await saveW({ unread: 0 });
     return { unread: 0 };
   }
 
@@ -101,7 +102,7 @@ export async function watch(env) {
   else if (firesLastHour.length >= MAX_FIRES_PER_HOUR) reason = "hourly fire cap reached";
 
   if (reason) {
-    await saveW({ unread: msgs.length, last_skip: reason, fires: firesLastHour });
+    if (w.unread !== msgs.length || w.last_skip !== reason) await saveW({ unread: msgs.length, last_skip: reason, fires: firesLastHour });
     return { unread: msgs.length, skipped: reason };
   }
 
