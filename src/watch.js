@@ -60,7 +60,8 @@ async function pollFrom(token, offset) {
 export async function watch(env) {
   const token = env.WA_AGENT_TOKEN;
   const fireToken = env.RORY_FIRE_TOKEN;
-  const routine = env.RORY_ROUTINE_ID;
+  // Claude Code relay routine "Rory WhatsApp relay" (it calls fire_trigger on the Rory scheduled task).
+  const routine = env.RORY_RELAY_ROUTINE_ID || "trig_01RjGX1D2qZaNh7nBNGM9Gfn";
   if (!token || !fireToken || !routine || !env.STATE) return { skipped: "not configured" };
 
   const now = Math.floor(Date.now() / 1000);
@@ -126,7 +127,7 @@ export async function watchStatus(request, env) {
   if (!token || url.searchParams.get("key") !== token.slice(0, 8)) return new Response("forbidden", { status: 403 });
   const w = (await env.STATE.get(WATCH_KEY, "json")) || {};
   return new Response(
-    JSON.stringify({ configured: !!(env.WA_AGENT_TOKEN && env.RORY_FIRE_TOKEN && env.RORY_ROUTINE_ID), routine: env.RORY_ROUTINE_ID, ...w }, null, 2),
+    JSON.stringify({ configured: !!(env.WA_AGENT_TOKEN && env.RORY_FIRE_TOKEN), routine: env.RORY_RELAY_ROUTINE_ID || "trig_01RjGX1D2qZaNh7nBNGM9Gfn", ...w }, null, 2),
     { headers: { "Content-Type": "application/json" } }
   );
 }
