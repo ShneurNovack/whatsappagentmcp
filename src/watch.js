@@ -62,14 +62,22 @@ export async function watch(env) {
   const fireToken = env.RORY_FIRE_TOKEN;
   // Claude Code relay routine "Rory WhatsApp relay" (it calls fire_trigger on the Rory scheduled task).
   const routine = env.RORY_RELAY_ROUTINE_ID || "trig_01RjGX1D2qZaNh7nBNGM9Gfn";
-  if (!token || !fireToken || !routine || !env.STATE) return { skipped: "not configured" };
+  if (!env.STATE) return { skipped: "no KV" };
+  const diag = (reason) => env.STATE.put("watcher:diag", JSON.stringify({ at: Math.floor(Date.now() / 1000), reason, has_token: !!token, has_fire: !!fireToken }));
+  if (!token || !fireToken || !routine) {
+    await diag("not configured");
+    return { skipped: "not configured" };
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const w = (await env.STATE.get(WATCH_KEY, "json")) || {};
   const agent = (await env.STATE.get("agent:" + (await sha(token)), "json")) || {};
   const saveW = (patch) => env.STATE.put(WATCH_KEY, JSON.stringify({ ...w, ...patch, last_tick: now }));
 
-  if (agent.offset === undefined || agent.offset === null) return { skipped: "no saved read position yet" };
+  if (agent.offset === undefined || agent.offset === null) {
+    await diag("no saved read position for this WA_AGENT_TOKEN (key agent:" + (await sha(token)) + ")");
+    return { skipped: "no saved read position yet" };
+  }
 
   const { msgs, head } = await pollFrom(token, agent.offset);
   if (!msgs.length) {
